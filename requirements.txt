@@ -1,0 +1,13 @@
+# Argus core dependencies
+requests>=2.28.0
+
+# Optional: install sister skills manually per README Prerequisites
+# - NotebookLM channel: pip install notebooklm-py
+# - WebAccess channel:  git clone https://github.com/eze-is/web-access
+# - GitHub channel:     brew install gh && gh auth login
+#
+# Bring-your-own (no public upstream, see README):
+# - perplexity-reader  (Perplexity browser wrapper)
+# - chrome-reader.py   (WebAccess fallback)
+# - bird CLI           (X/Twitter)
+# - Comet.app          (Perplexity browser, proprietary)

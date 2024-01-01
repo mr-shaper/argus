@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+build/
+dist/
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.cover
+*.py,cover
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# secrets / cookies (important: keep out of OSS)
+cookies/
+*.cookies.json
+.env
+.env.local
+.env.*.local
+secrets.json
+*_credentials.json
+
+# argus runtime artifacts
+research-raw/
+argus-output/
+_manifest.json
+manifest.json
+*.bak-*
+.backup-*/
+
+# notebooklm runtime
+nlm_state/
+*.nlm_cache
+
+# audit (dev process artifacts, not for OSS)
+audit/
+
+# misc
+*.log
+*.tmp
+.temp/
+tmp/
