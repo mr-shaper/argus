@@ -125,3 +125,74 @@ The following are **intentionally out of scope** for OSS contributions:
 ## License
 
 By contributing to Argus, you agree that your contributions will be licensed under the [Apache License 2.0](./LICENSE).
+
+## perplexity-reader Reference Stub (BYO)
+
+If `scripts/perplexity_quick.py` or `perplexity_deep.py` is called but `perplexity-reader` skill is not installed, `doctor` will report it missing. Below is a 90-line minimal stub that passes `check-auth` so doctor goes green; `quick`/`deep` return `NOT IMPLEMENTED` (you fill in the actual logic).
+
+Save as `~/.claude/skills/shelf/perplexity-reader/scripts/perplexity-reader.py`:
+
+```python
+#!/usr/bin/env python3
+"""Minimal perplexity-reader stub. Implements check-auth only; quick/deep are placeholders.
+
+Implement Perplexity browser/HTTP integration based on your environment (CDP, Playwright, raw API, etc).
+"""
+import argparse, json, os, sys
+from pathlib import Path
+
+COOKIES_PATH = Path(os.environ.get("PERPLEXITY_COOKIES_PATH", str(Path.home() / ".config/argus/cookies/perplexity.json")))
+
+def cmd_check_auth(args):
+    if not COOKIES_PATH.exists():
+        print(f"FAIL: cookies not found at {COOKIES_PATH}", file=sys.stderr); sys.exit(1)
+    try:
+        cookies = json.loads(COOKIES_PATH.read_text())
+    except Exception as e:
+        print(f"FAIL: cannot parse cookies: {e}", file=sys.stderr); sys.exit(1)
+    # Accept presence of ANY perplexity.ai cookie (lenient — matches Comet behavior where
+    # NextAuth session-token isn't exposed as web cookie)
+    names = [c.get("name", "") for c in cookies] if isinstance(cookies, list) else list(cookies.keys())
+    if any("pplx" in n or "comet" in n or "perplexity" in n for n in names):
+        print(f"OK: {len(names)} cookie name(s) present"); sys.exit(0)
+    print(f"FAIL: no perplexity-domain cookie among {names}", file=sys.stderr); sys.exit(1)
+
+def cmd_quick(args):
+    print("NOT IMPLEMENTED: replace this stub with your Perplexity quick-search integration", file=sys.stderr); sys.exit(2)
+
+def cmd_deep(args):
+    print("NOT IMPLEMENTED: replace this stub with your Perplexity deep-research integration", file=sys.stderr); sys.exit(2)
+
+def cmd_login(args):
+    print("NOT IMPLEMENTED: implement login flow that writes cookies to PERPLEXITY_COOKIES_PATH", file=sys.stderr); sys.exit(2)
+
+def main():
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check-auth")
+    qp = sub.add_parser("quick-search"); qp.add_argument("query"); qp.add_argument("--output-dir")
+    dp = sub.add_parser("deep-search"); dp.add_argument("query"); dp.add_argument("--output", required=True)
+    sub.add_parser("login")
+    args = p.parse_args()
+    {"check-auth": cmd_check_auth, "quick-search": cmd_quick, "deep-search": cmd_deep, "login": cmd_login}[args.cmd](args)
+
+if __name__ == "__main__": main()
+```
+
+Make executable: `chmod +x ~/.claude/skills/shelf/perplexity-reader/scripts/perplexity-reader.py`
+
+## Bird Channel — How to Implement (BYO)
+
+The `bird` CLI is a proprietary Node.js binary with no public upstream. `scripts/bird_batch.py` calls it via `subprocess.run(["bird", ...])`. To implement a public alternative, your binary must accept:
+
+- `bird whoami` → exit 0 if logged in, exit non-zero otherwise; stdout should print the user handle
+- `bird search "<query>" -n <N>` → newline-separated tweet records, JSON or text
+- `bird read <url>` → tweet body (text)
+- `bird thread <url>` → full thread (multiple tweets)
+- `bird news -n <N>` → trending topics
+
+The official `bird_batch.py` uses `-n` flag (not `--limit`). Authentication is via Chrome default profile cookies (no API key).
+
+Recommended public alternatives (community welcome to PR a reference impl):
+- Playwright-based X.com scraper
+- A wrapper around the official X API v2 (requires paid tier for search)

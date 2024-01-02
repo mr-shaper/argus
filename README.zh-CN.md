@@ -22,9 +22,11 @@
 
 Argus 本身是一个编排层，而非全能 Agent。每个通道依赖一个"姐妹技能"——你自带或自建的独立工具——负责实际的数据采集。Argus 只管调度、限流和结果汇聚。这种设计使得各通道可以独立替换，而不影响整体流水线。
 
-### 🩺 诊断器 — 自动检测与自愈
+### 🩺 诊断器 — 检测与引导
 
-`probe.py doctor` 是 Argus 的核心健康检查命令，支持两种模式：快速门禁（essential-only）和完整引导检测（交互式，macOS 提供 osascript 弹窗引导）。详见下方 [DOCTOR](#doctor--自动检测与自愈) 节。
+`probe.py doctor` 是 Argus 的核心健康检查命令，支持两种模式：快速门禁（essential-only）和完整引导检测（交互式，macOS 提供 osascript 弹窗引导）。详见下方 [DOCTOR](#doctor--检测与引导) 节。
+
+> **注意：** 在 macOS 上，部分自动启动尝试可能因 LaunchServices 行为而失败；本工具会检测问题并引导你使用安全的手动命令（参见上手步骤第 1 步中的 `open -na`）。
 
 ### 🚦 引导上手 — 首次授权步骤
 
@@ -32,7 +34,7 @@ Argus 本身是一个编排层，而非全能 Agent。每个通道依赖一个"�
 
 ---
 
-## DOCTOR — 自动检测与自愈
+## DOCTOR — 检测与引导
 
 `probe.py doctor` 是 Argus 的核心。它有两种模式：
 
@@ -73,15 +75,22 @@ python3 scripts/probe.py doctor
 
 ## Onboarding — 首次授权步骤
 
-首次使用前，按以下 7 步完成各通道授权配置。每步只需操作一次，后续调研自动复用。
+首次使用前，按以下步骤完成各通道授权配置。每步只需操作一次，后续调研自动复用。
+
+> ⚠️ **macOS 用户**：请先激活 venv，或使用 `./run-argus.sh` 封装脚本。doctor 命令会从 PATH 调用 `notebooklm` 和 `bird`；通过 `pip` 安装的二进制文件在 `.venv/bin/` 下，不激活 venv 将无法找到。
 
 ### Step 1：启动 Comet 浏览器（端口 9223，Perplexity 专属）
 
 Comet 是 Perplexity 专属浏览器。Argus 要求它监听 CDP 端口 9223，以绕过在普通 Chrome 端口上触发的 hcaptcha。
 
 ```bash
-# 以 CDP 调试模式启动 Comet
-# 具体启动命令取决于你的 Comet 安装方式
+# macOS：必须使用 open -na（不能用 nohup），因为 LaunchServices 行为限制
+# 如果 Comet 已在运行，先 pkill -9
+pkill -9 -f "Comet.app" 2>/dev/null || true
+sleep 2
+open -na "Comet" --args --remote-debugging-port=9223 "--remote-allow-origins=*"
+# 注意：--remote-allow-origins=* 必须加引号（防止 zsh glob 展开）
+
 # 确认端口：
 curl -s http://localhost:9223/json/version | python3 -m json.tool
 ```
@@ -99,12 +108,17 @@ python3 scripts/perplexity-login.py
 
 WebAccess 通道依赖 Chrome 以 CDP 调试模式运行于端口 9222。"connect failed"报错几乎都是 DevToolsActivePort 路径不匹配导致的，与权限无关。
 
+> ⚠️ 每次重启 Comet/Chrome 后，WebSocket UUID 会变化，但 `~/Library/Application Support/Google/Chrome/DevToolsActivePort` 不会自动更新。每次重启浏览器后，必须重新运行 `probe.py doctor` 以修补该文件。
+
 ```bash
-# 以 CDP 调试模式启动 Chrome
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+# macOS：必须使用 open -na（不能用 nohup）
+pkill -9 -f "Google Chrome" 2>/dev/null || true
+sleep 2
+open -na "Google Chrome" --args \
   --remote-debugging-port=9222 \
-  --no-first-run \
-  --no-default-browser-check &
+  --user-data-dir="$HOME/.chrome-debug-profile" \
+  "--remote-allow-origins=*"
+# 注意：--remote-allow-origins=* 必须加引号（防止 zsh glob 展开）
 
 # 验证连通性
 curl -s http://localhost:9222/json/version | python3 -m json.tool
@@ -135,14 +149,15 @@ python3 -c "import notebooklm; notebooklm.authenticate()"
 
 ### Step 6：Bird CLI（X/Twitter，使用 Chrome 默认 Profile）
 
-Bird CLI 是 X/Twitter 通道的姐妹技能，需要自行提供实现。配置完成后验证：
+Bird 是一个专有 Node.js CLI 二进制文件，**无公开上游**。需自带实现。通道脚本 `bird_batch.py` 是一个 stub，调用 PATH 上的 `bird`；如需贡献公开替代实现，请参阅 `CONTRIBUTING.md` Bird Channel 章节中的接口约定。
+
+将 `bird` 二进制文件放入 PATH 后，先在 Chrome **默认** Profile 中登录 X.com，再验证：
 
 ```bash
-# 验证 Bird CLI 可访问
-bird search "test query" --limit 5
+# 验证 Bird CLI 可访问（已将 bird 二进制放入 PATH 后）
+bird whoami
+# 应输出你的 X/Twitter 用户名
 ```
-
-> 注意：Bird CLI 无公开上游仓库，需自建或使用社区实现。
 
 ### Step 7：GitHub CLI
 
@@ -153,7 +168,30 @@ gh auth login
 gh api user --jq '.login'
 ```
 
-完成所有 7 步后，运行完整的就绪检测确认配置：
+### Step 8：小红书 MCP 服务（可选，无公开上游）
+
+小红书通道通过 `localhost:18060` 上的 MCP 服务进行查询。该服务为专有组件，无公开源码；你可以：
+- 自建本地 MCP 服务，暴露相同的 JSON-RPC schema（`search_feeds`、`get_feed_detail`）
+- 跳过此通道：`probe.py run --skip-xhs`
+
+如果你在本地运行该服务：
+```bash
+# 验证健康状态
+curl -s http://localhost:18060/health
+# 期望返回：{"success":true,"status":"healthy",...}
+
+# 环境变量（如你的服务使用不同端口/路径可覆盖）
+export ARGUS_XHS_MCP_URL="http://localhost:18060/mcp"
+
+# 扫描登录状态（例如 MCP 暴露了 get_login_qrcode 工具）
+# 具体首次授权流程请参阅你的本地 MCP 服务文档
+```
+
+**无需 SSH** — 仅本机连接。
+
+注意：为防封号，查询之间强制串行限速（`Sem(1)` + 每次 2 秒间隔）。
+
+完成所有步骤后，运行完整的就绪检测确认配置：
 
 ```bash
 python3 scripts/probe.py doctor
@@ -161,16 +199,17 @@ python3 scripts/probe.py doctor
 
 ---
 
-## 6 通道矩阵
+## 7 通道矩阵
 
-| 通道 | 用途 | 姐妹依赖 |
-|------|------|---------|
-| Perplexity Quick | 快速 AI 综合摘要 | `perplexity-reader`（自备）+ Comet 浏览器（专有） |
-| Perplexity Deep | 长篇 AI 深度报告 | 同上 |
-| NotebookLM | 多维结构化报告（最多 300 个来源） | `notebooklm-py`（`pip install notebooklm-py`） |
-| Bird（X/Twitter） | 帖子搜索与社交信号采集 | `bird` CLI（自备或自建） |
-| WebAccess | 网页爬取 + YouTube URL 发现 | `web-access` skill（[eze-is/web-access](https://github.com/eze-is/web-access)）+ `chrome-reader.py`（自备） |
-| GitHub | 仓库搜索、Trending、Issues | `gh` CLI（`brew install gh`） |
+| 通道 | 用途 | 姐妹依赖 | 首次授权 |
+|------|------|---------|---------|
+| `perplexity_quick` | 快速 AI 综合摘要（< 5 分钟） | `perplexity-reader`（自备）+ Comet :9223 | 步骤 1 + 2 |
+| `perplexity_deep` | 深度 AI 长报告（5-10 分钟） | 同上 | 步骤 1 + 2 |
+| `nlm` | 多维结构化报告（15-45 分钟，上限 300 来源） | `notebooklm-py` | 步骤 5 |
+| `bird` | X/Twitter 帖子搜索 | `bird` CLI（自带 — 无参考实现） | 步骤 6 |
+| `webaccess` | 网页爬取 + YouTube URL 发现 | `web-access` skill + Chrome CDP | 步骤 3 + 4 |
+| `github` | 仓库 / Trending / Issues | `gh` CLI | 步骤 7 |
+| `xhs` | 小红书帖子搜索 | 小红书 MCP（自带，本机 :18060） | 步骤 8 |
 
 每个通道均设计为**独立容错**：单个通道失败不会阻断其他通道运行。
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ARGUS Pre-Flight Doctor — 6-channel cold-start guide + auto-fix + osascript popup
+ARGUS Pre-Flight Doctor — 7-channel cold-start guide + auto-fix + osascript popup
 
 Usage:
   tool_auth_check.py                        # interactive mode (popup-guided)
@@ -11,15 +11,22 @@ Usage:
   tool_auth_check.py --no-popup             # no popup (cron/CI mode)
 
 Channels:
-  1. comet-9223       Comet (Perplexity)
+  1. comet-9223       Comet (Perplexity) — port via ARGUS_COMET_PORT (default 9223)
   2. perplexity-auth  Cookie valid
-  3. chrome-9222      Chrome debug (shared by web-access/chrome-reader)
+  3. chrome-9222      Chrome debug — port via ARGUS_CHROME_PORT (default 9222)
   4. webaccess-proxy  CDP Proxy 3456 + DevToolsActivePort patch
   5. notebooklm-auth  Google OAuth
   6. bird-auth        Chrome default profile cookie
+  7. xhs-scout        XHS MCP local service health (non-essential)
 
 Each channel has 3 stages: detect → auto-fix / manual-guide → validate
 Popup uses osascript (macOS); press Enter / click "Done" → re-validate. Times out with fallback skip.
+
+Environment variables:
+  ARGUS_COMET_PORT      Comet remote-debugging port (default: 9223)
+  ARGUS_CHROME_PORT     Chrome remote-debugging port (default: 9222)
+  ARGUS_XHS_MCP_URL     XHS MCP endpoint (default: http://localhost:18060/mcp)
+  ARGUS_XHS_HEALTH_URL  XHS health endpoint (default: http://localhost:18060/health)
 """
 
 import argparse
@@ -137,40 +144,42 @@ def log_check(name: str, ok: bool, msg: str):
 # ──────────────────────────── Channel Checks ────────────────────────────
 
 def check_comet_9223(interactive: bool = True) -> dict:
-    """Perplexity dependency: Comet 9223 live."""
-    if http_code("http://localhost:9223/json/version") == 200:
-        return {"status": "ok", "msg": "Comet 9223 live"}
+    """Perplexity dependency: Comet live (port from ARGUS_COMET_PORT, default 9223)."""
+    comet_port = os.environ.get("ARGUS_COMET_PORT", "9223")
+    comet_url = f"http://localhost:{comet_port}/json/version"
+    if http_code(comet_url) == 200:
+        return {"status": "ok", "msg": f"Comet {comet_port} live"}
 
     # Auto-start
-    print("  Comet 9223 not ready, attempting auto-start...")
+    print(f"  Comet {comet_port} not ready, attempting auto-start...")
     comet_bin = "/Applications/Comet.app/Contents/MacOS/Comet"
     if not Path(comet_bin).exists():
         return {"status": "fail", "msg": f"Comet.app not installed ({comet_bin})"}
 
     subprocess.Popen(
-        ["nohup", comet_bin, "--remote-debugging-port=9223", "--remote-allow-origins=*"],
+        ["nohup", comet_bin, f"--remote-debugging-port={comet_port}", "--remote-allow-origins=*"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
     )
     for i in range(6):
         time.sleep(2)
-        if http_code("http://localhost:9223/json/version") == 200:
-            return {"status": "ok", "msg": "Comet 9223 auto-started"}
+        if http_code(comet_url) == 200:
+            return {"status": "ok", "msg": f"Comet {comet_port} auto-started"}
 
     # Popup fallback
     if interactive:
         ret = popup(
-            "ARGUS Doctor — Comet 9223",
-            "Auto-start of Comet failed.\nPlease run manually in terminal:\n\n    comet-debug\n\n(alias defined in ~/.zshrc)\nClick 'Started' when done; click 'Skip Perplexity' to skip the channel.",
+            f"ARGUS Doctor — Comet {comet_port}",
+            f"Auto-start of Comet failed.\nPlease run manually in terminal:\n\n    comet-debug\n\n(alias defined in ~/.zshrc)\nClick 'Started' when done; click 'Skip Perplexity' to skip the channel.",
             buttons=("Skip Perplexity", "Started"), default="Started",
         )
         if ret == "Started":
             for _ in range(5):
-                if http_code("http://localhost:9223/json/version") == 200:
-                    return {"status": "ok", "msg": "Comet 9223 (manual)"}
+                if http_code(comet_url) == 200:
+                    return {"status": "ok", "msg": f"Comet {comet_port} (manual)"}
                 time.sleep(2)
-            return {"status": "fail", "msg": "Comet 9223 still unreachable"}
+            return {"status": "fail", "msg": f"Comet {comet_port} still unreachable"}
         return {"status": "skipped", "msg": "user skipped"}
-    return {"status": "fail", "msg": "Comet 9223 auto-start failed (non-interactive)"}
+    return {"status": "fail", "msg": f"Comet {comet_port} auto-start failed (non-interactive)"}
 
 
 def check_perplexity_auth(interactive: bool = True) -> dict:
@@ -198,53 +207,55 @@ def check_perplexity_auth(interactive: bool = True) -> dict:
 
 
 def check_chrome_9222(interactive: bool = True) -> dict:
-    """Chrome 9222 + DevToolsActivePort patch."""
-    if http_code("http://localhost:9222/json/version") != 200:
+    """Chrome debug + DevToolsActivePort patch (port from ARGUS_CHROME_PORT, default 9222)."""
+    chrome_port = os.environ.get("ARGUS_CHROME_PORT", "9222")
+    chrome_url = f"http://localhost:{chrome_port}/json/version"
+    if http_code(chrome_url) != 200:
         # Auto-start
-        print("  Chrome 9222 not ready, attempting auto-start...")
+        print(f"  Chrome {chrome_port} not ready, attempting auto-start...")
         chrome_bin = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         if not Path(chrome_bin).exists():
             return {"status": "fail", "msg": "Google Chrome.app not found"}
         subprocess.Popen(
             ["nohup", chrome_bin,
-             "--remote-debugging-port=9222",
+             f"--remote-debugging-port={chrome_port}",
              f"--user-data-dir={CHROME_DEBUG_PROFILE}",
              "--remote-allow-origins=*"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
         )
         for _ in range(6):
             time.sleep(2)
-            if http_code("http://localhost:9222/json/version") == 200:
+            if http_code(chrome_url) == 200:
                 break
         else:
             if interactive:
                 ret = popup(
-                    "ARGUS Doctor — Chrome 9222",
-                    "Auto-start of Chrome failed.\nPlease run manually in terminal:\n\n    chrome-debug\n\n(alias defined in ~/.zshrc)\nClick 'Started' when done.",
+                    f"ARGUS Doctor — Chrome {chrome_port}",
+                    f"Auto-start of Chrome failed.\nPlease run manually in terminal:\n\n    chrome-debug\n\n(alias defined in ~/.zshrc)\nClick 'Started' when done.",
                     buttons=("Skip", "Started"), default="Started",
                 )
                 if ret != "Started":
                     return {"status": "skipped", "msg": "user skipped"}
-                if http_code("http://localhost:9222/json/version") != 200:
-                    return {"status": "fail", "msg": "Chrome 9222 unreachable"}
+                if http_code(chrome_url) != 200:
+                    return {"status": "fail", "msg": f"Chrome {chrome_port} unreachable"}
             else:
-                return {"status": "fail", "msg": "Chrome 9222 auto-start failed"}
+                return {"status": "fail", "msg": f"Chrome {chrome_port} auto-start failed"}
 
     # DevToolsActivePort patch
-    body = http_body("http://localhost:9222/json/version")
+    body = http_body(chrome_url)
     try:
         data = json.loads(body)
         ws_url = data.get("webSocketDebuggerUrl", "")
         # Extract ws path portion
         ws_path = ""
-        for prefix in ("ws://localhost:9222", "ws://127.0.0.1:9222"):
+        for prefix in (f"ws://localhost:{chrome_port}", f"ws://127.0.0.1:{chrome_port}"):
             if ws_url.startswith(prefix):
                 ws_path = ws_url[len(prefix):]
                 break
         if ws_path:
             DEV_TOOLS_ACTIVE_PORT.parent.mkdir(parents=True, exist_ok=True)
-            DEV_TOOLS_ACTIVE_PORT.write_text(f"9222\n{ws_path}\n")
-            return {"status": "ok", "msg": f"9222 + DevToolsActivePort patched ({ws_path[:40]})"}
+            DEV_TOOLS_ACTIVE_PORT.write_text(f"{chrome_port}\n{ws_path}\n")
+            return {"status": "ok", "msg": f"{chrome_port} + DevToolsActivePort patched ({ws_path[:40]})"}
     except Exception as e:
         return {"status": "fail", "msg": f"patch failed: {e}"}
     return {"status": "fail", "msg": "could not parse webSocketDebuggerUrl"}
@@ -270,9 +281,10 @@ def check_webaccess_proxy(interactive: bool = True) -> dict:
     if ok:
         return {"status": "ok", "msg": msg}
 
-    # Ensure Chrome 9222 is available first
-    if http_code("http://localhost:9222/json/version") != 200:
-        return {"status": "fail", "msg": "Chrome 9222 not ready (run chrome-9222 first)"}
+    # Ensure Chrome is available first
+    chrome_port = os.environ.get("ARGUS_CHROME_PORT", "9222")
+    if http_code(f"http://localhost:{chrome_port}/json/version") != 200:
+        return {"status": "fail", "msg": f"Chrome {chrome_port} not ready (run chrome-9222 first)"}
 
     # Restart proxy
     print("  Restarting CDP Proxy...")
@@ -342,6 +354,30 @@ def check_notebooklm_auth(interactive: bool = True) -> dict:
     return {"status": "fail", "msg": "not authenticated"}
 
 
+def check_xhs_scout(interactive: bool = True) -> dict:
+    """XHS MCP local service health check (port via ARGUS_XHS_HEALTH_URL / ARGUS_XHS_MCP_URL)."""
+    health_url = os.environ.get("ARGUS_XHS_HEALTH_URL", "http://localhost:18060/health")
+    mcp_url = os.environ.get("ARGUS_XHS_MCP_URL", "http://localhost:18060/mcp")
+    if http_code(health_url) == 200:
+        return {"status": "ok", "msg": f"XHS MCP healthy ({health_url})"}
+    # Fallback: try MCP endpoint directly
+    if http_code(mcp_url, timeout=3.0) not in (0,):
+        return {"status": "ok", "msg": f"XHS MCP reachable ({mcp_url})"}
+
+    if interactive:
+        ret = popup(
+            "ARGUS Doctor — XHS MCP",
+            f"XHS MCP service not detected at {health_url}.\n\nPlease start the local XHS MCP service on this machine,\nthen click 'Started', or click 'Skip' to continue without XHS.",
+            buttons=("Skip", "Started"), default="Started",
+        )
+        if ret == "Started":
+            if http_code(health_url) == 200:
+                return {"status": "ok", "msg": f"XHS MCP healthy (after start)"}
+            return {"status": "fail", "msg": f"XHS MCP still unreachable at {health_url}"}
+        return {"status": "skipped", "msg": "user skipped"}
+    return {"status": "fail", "msg": f"XHS MCP unreachable at {health_url} (non-interactive)"}
+
+
 def check_bird_auth(interactive: bool = True) -> dict:
     """Bird X/Twitter cookie."""
     r = run(["bird", "whoami"], timeout=15)
@@ -373,12 +409,13 @@ def check_bird_auth(interactive: bool = True) -> dict:
 
 CHANNELS = [
     # (name, checker, essential)
-    ("comet-9223",       check_comet_9223,       True),   # Perplexity dependency
+    ("comet-9223",       check_comet_9223,       True),   # Perplexity dependency; port via ARGUS_COMET_PORT
     ("perplexity-auth",  check_perplexity_auth,  True),
-    ("chrome-9222",      check_chrome_9222,      True),   # web-access/chrome-reader dependency
+    ("chrome-9222",      check_chrome_9222,      True),   # web-access/chrome-reader; port via ARGUS_CHROME_PORT
     ("webaccess-proxy",  check_webaccess_proxy,  False),  # optional
     ("notebooklm-auth",  check_notebooklm_auth,  True),
     ("bird-auth",        check_bird_auth,        False),
+    ("xhs-scout",        check_xhs_scout,        False),  # local XHS MCP; URL via ARGUS_XHS_HEALTH_URL
 ]
 
 

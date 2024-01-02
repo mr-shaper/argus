@@ -1,0 +1,23 @@
+[project]
+name = "argus"
+version = "0.1.0"
+description = "Multi-source deep research orchestrator with Detect & Guide DOCTOR + sister-skill choreography"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+nlm = ["notebooklm-py", "playwright"]
+perplexity = ["websocket-client"]
+webaccess = ["websocket-client"]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_GITHUB_HANDLE/argus"
+Issues = "https://github.com/YOUR_GITHUB_HANDLE/argus/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

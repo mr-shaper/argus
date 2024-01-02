@@ -1,6 +1,6 @@
 # Argus
 
-> Multi-source deep research orchestrator. SKILLS-style sister-skill choreography, with built-in DOCTOR auto-detection and guided Onboarding.
+> Multi-source deep research orchestrator. SKILLS-style sister-skill choreography, with built-in DOCTOR channel detection and guided Onboarding.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/argus-research/argus/actions/workflows/ci.yml/badge.svg)](https://github.com/argus-research/argus/actions/workflows/ci.yml)
@@ -19,17 +19,19 @@ Argus combines three orthogonal capabilities into one CLI:
 
 Argus does not implement search or scrape itself. It coordinates **6 independent channels** — Perplexity, NotebookLM, X/Twitter via Bird, web crawl via web-access, Chrome reader, and GitHub — into one OODC-Observe pipeline. Each channel is a separate "sister skill" that you supply (`perplexity-reader`, `notebooklm-py`, `bird`, `web-access`, ...). Argus manages rate limits, quotas, and failure isolation; channels do not know about each other.
 
-### 2. DOCTOR — Auto-Detect & Self-Heal
+### 2. DOCTOR — Detect & Guide
 
 First-time setup across 6 channels is non-trivial. `probe.py doctor` checks every channel, tells you exactly what is broken, and on macOS pops `osascript` dialogs with the precise remediation command. Two modes: `--essential <list>` for a quick gate before a research run, plain `doctor` for full guided onboarding.
 
+> **Note:** On macOS some auto-launch attempts may fail due to LaunchServices behavior; this Skill detects issues and guides you to the safe manual command (see Onboarding step 1 for `open -na`).
+
 ### 3. Onboarding — Guided First-Time Auth
 
-Each channel has a per-channel walkthrough (see below). Run `doctor`, follow popup prompts, and you will be running multi-source research in roughly 10 minutes — assuming Chrome or Comet and NotebookLM accounts exist.
+Each channel has a per-channel walkthrough (see below). Run `doctor`, follow popup prompts, and you will be running multi-source research in 30-90 minutes depending on auth state and which sister skills you bring — assuming Chrome or Comet and NotebookLM accounts exist.
 
 ---
 
-## DOCTOR — Auto-Detect & Self-Heal
+## DOCTOR — Detect & Guide
 
 `probe.py doctor` is the entry point for any first-time or broken-channel situation. It has two modes.
 
@@ -79,12 +81,15 @@ Each channel needs to be authorized once. Follow these steps in order. After com
 
 Comet is Perplexity's proprietary browser (free download from perplexity.ai). Without it, regular Chrome triggers hCaptcha on Perplexity pages.
 
+> ⚠️ **macOS users**: Activate your venv first or use `./run-argus.sh` wrapper. The doctor calls `notebooklm` and `bird` from PATH; binaries installed via `pip` go into `.venv/bin/` and won't be found otherwise.
+
 ```bash
-# Launch Comet with remote debugging enabled
-nohup /Applications/Comet.app/Contents/MacOS/Comet \
-  --remote-debugging-port=9223 \
-  --remote-allow-origins=* \
-  >/dev/null 2>&1 &
+# macOS: must use `open -na` (not `nohup`) due to LaunchServices behavior
+# If Comet is already running, pkill -9 first
+pkill -9 -f "Comet.app" 2>/dev/null || true
+sleep 2
+open -na "Comet" --args --remote-debugging-port=9223 "--remote-allow-origins=*"
+# Note: --remote-allow-origins=* MUST be quoted (zsh glob expansion)
 
 # Verify the port is live
 curl -s http://localhost:9223/json/version
@@ -108,12 +113,17 @@ The cookie is valid until your Perplexity session expires. Re-run the login when
 
 Chrome must be launched with remote debugging enabled, and the `DevToolsActivePort` file must be written correctly. A missing or stale port file is the most common cause of "connect failed" errors — it is a path issue, not a permissions issue.
 
+> ⚠️ Whenever you restart Comet/Chrome, the WebSocket UUID changes but `~/Library/Application Support/Google/Chrome/DevToolsActivePort` is not auto-refreshed. You must rerun `probe.py doctor` after each browser restart to repatch the file.
+
 ```bash
-# Launch Chrome with remote debugging
-nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+# macOS: must use `open -na` (not `nohup`) due to LaunchServices behavior
+pkill -9 -f "Google Chrome" 2>/dev/null || true
+sleep 2
+open -na "Google Chrome" --args \
   --remote-debugging-port=9222 \
   --user-data-dir="$HOME/.chrome-debug-profile" \
-  --remote-allow-origins=* >/dev/null 2>&1 &
+  "--remote-allow-origins=*"
+# Note: --remote-allow-origins=* MUST be quoted (zsh glob expansion)
 
 # Write the DevToolsActivePort file (required by Argus)
 WS_PATH=$(curl -s http://localhost:9222/json/version \
@@ -145,13 +155,12 @@ After successful login, `notebooklm-py` persists your credentials locally. The l
 
 ### 6. Bird CLI (X/Twitter)
 
-Sign in to X.com in your Chrome **default** profile first (not the `--user-data-dir` debug profile), then:
+Bird is a proprietary Node.js CLI binary with no public upstream. **Bring your own.** The channel script `bird_batch.py` is a stub that calls `bird` on PATH; see `CONTRIBUTING.md` Bird Channel section for interface contract if you wish to implement a public alternative.
+
+Sign in to X.com in your Chrome **default** profile first (not the `--user-data-dir` debug profile), then place your `bird` binary on PATH and verify:
 
 ```bash
-# Install bird CLI (bring your own or use a community build)
-npm install -g bird-cli
-
-# Verify authentication
+# Verify authentication (after placing bird binary on PATH)
 bird whoami
 # Should print your X/Twitter handle
 ```
@@ -167,7 +176,30 @@ gh auth login
 gh api user --jq .login
 ```
 
-After completing all 7 steps, run a full doctor check:
+### 8. XHS / Xiaohongshu MCP service (optional, no public upstream)
+
+The XHS channel queries an MCP server on `localhost:18060`. This server is a proprietary component with no public source; you can either:
+- Bring your own local MCP service exposing the same JSON-RPC schema (`search_feeds`, `get_feed_detail`)
+- Skip this channel: `probe.py run --skip-xhs`
+
+If you run the service locally:
+```bash
+# verify health
+curl -s http://localhost:18060/health
+# expected: {"success":true,"status":"healthy",...}
+
+# env var (override default if your service uses a different port/path)
+export ARGUS_XHS_MCP_URL="http://localhost:18060/mcp"
+
+# scan login state (e.g., MCP exposes a `get_login_qrcode` tool)
+# follow your local MCP service docs for first-time auth
+```
+
+**No SSH required** — connections are local-only.
+
+Note: serial rate limit (`Sem(1)` + 2s sleep between queries) is enforced for anti-ban safety.
+
+After completing all steps, run a full doctor check:
 
 ```bash
 python3 scripts/probe.py doctor
@@ -177,16 +209,17 @@ All channels should show green. Any remaining failures will include a remediatio
 
 ---
 
-## 6 Channels
+## 7 Channels
 
 | Channel | Purpose | Sister Skill | First-Time Auth |
 |---------|---------|--------------|-----------------|
-| `perplexity_quick` | AI synthesis (3-round, under 5 min) | perplexity-reader + Comet | Steps 1 and 2 |
-| `perplexity_deep` | Long-form AI research report (5–10 min) | perplexity-reader + Comet | Steps 1 and 2 |
-| `nlm` | Structured multi-source report (15–45 min, up to 300 sources) | notebooklm-py | Step 5 |
-| `bird` | X/Twitter post search and social signal harvesting | bird CLI | Step 6 |
-| `webaccess` | Web crawl and YouTube URL discovery | web-access + Chrome CDP | Steps 3 and 4 |
-| `github` | Repository search, trending, and issue discovery | gh CLI | Step 7 |
+| `perplexity_quick` | AI synthesis (< 5 min) | perplexity-reader [BYO] + Comet :9223 | Step 1 + 2 |
+| `perplexity_deep` | Deep AI report (5-10 min) | same | Step 1 + 2 |
+| `nlm` | Structured report (15-45 min, 300-source cap) | notebooklm-py | Step 5 |
+| `bird` | X/Twitter posts | bird CLI [BYO — no reference impl] | Step 6 |
+| `webaccess` | Web crawl + YouTube discovery | web-access skill + Chrome CDP | Step 3 + 4 |
+| `github` | repos / trending / issues | gh CLI | Step 7 |
+| `xhs` | Xiaohongshu posts | xiaohongshu MCP [BYO, local :18060] | Step 8 |
 
 Each channel is **independently fallback-safe**: a failure in one does not block the others. Channels that fail or are skipped appear in the manifest with `status=skipped`.
 
@@ -199,7 +232,8 @@ Each channel is **independently fallback-safe**: a failure in one does not block
 git clone <repo-url> argus
 cd argus
 
-# 2. Install Python dependencies
+# 2. Install Python dependencies (activate your venv first)
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Set up sister skills (see Onboarding above)

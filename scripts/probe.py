@@ -5,12 +5,12 @@ ARGUS — Main Orchestrator (probe.py)
 Usage:
   probe.py doctor [--essential CHANNELS] [--skip CHANNELS] [--no-popup] [--json]
   probe.py run    --topic TOPIC [--dimensions INT] [--budget STR]
-                  [--output PATH] [--skip-nlm] [--skip-deep]
+                  [--output PATH] [--skip-nlm] [--skip-deep] [--skip-xhs]
                   [--resume PATH] [--dry-run]
   probe.py resume MANIFEST_PATH
 
 Subcommands:
-  doctor  — Stage 0: run tool_auth_check.py preflight for 6-channel authorization; block if essential channels fail
+  doctor  — Stage 0: run tool_auth_check.py preflight for 7-channel authorization; block if essential channels fail
   run     — Stage 1-4: full-channel parallel research (DISCOVER → INJECT → WAIT → REPORT)
   resume  — resume from manifest.json checkpoint (NLM/Deep async task recovery)
 
@@ -57,6 +57,7 @@ NLM_PIPELINE = SCRIPTS_DIR / "nlm_pipeline.py"
 BIRD_BATCH = SCRIPTS_DIR / "bird_batch.py"
 WEBACCESS_CRAWL = SCRIPTS_DIR / "webaccess_crawl.py"
 GITHUB_FETCH = SCRIPTS_DIR / "github_fetch.py"
+XHS_QUERY = SCRIPTS_DIR / "xhs_query.py"
 
 DEFAULT_BUDGET_S = 5400  # 90 min
 
@@ -164,7 +165,8 @@ def init_manifest(topic: str, budget_s: int, output_dir: Path) -> dict:
             },
             "bird": {"status": "pending", "count": 0},
             "webaccess": {"status": "pending", "pages": 0},
-            "github": {"status": "pending", "repos": 0}
+            "github": {"status": "pending", "repos": 0},
+            "xhs": {"status": "pending", "posts": 0}
         },
         "doctor_passed": [],
         "errors": [],
@@ -189,7 +191,7 @@ def stage_discover(manifest: dict, manifest_path: Path, args, dry_run: bool):
     output_dir = Path(manifest["output_dir"])
 
     # Prepare per-channel output directories
-    for ch in ["perplexity_quick", "perplexity_deep", "nlm", "bird", "webaccess", "github"]:
+    for ch in ["perplexity_quick", "perplexity_deep", "nlm", "bird", "webaccess", "github", "xhs"]:
         (output_dir / ch).mkdir(parents=True, exist_ok=True)
 
     if dry_run:
@@ -202,6 +204,8 @@ def stage_discover(manifest: dict, manifest_path: Path, args, dry_run: bool):
         channels += ["perplexity_quick", "bird", "webaccess"]
         if not args.skip_gh:
             channels.append("github")
+        if not args.skip_xhs:
+            channels.append("xhs")
         for ch in channels:
             print(f"  - {ch}")
         manifest["stage"] = "Stage 1 DISCOVER (dry-run)"
@@ -210,6 +214,8 @@ def stage_discover(manifest: dict, manifest_path: Path, args, dry_run: bool):
         manifest["channels"]["webaccess"]["status"] = "dry-run"
         if not args.skip_gh:
             manifest["channels"]["github"]["status"] = "dry-run"
+        if not args.skip_xhs:
+            manifest["channels"]["xhs"]["status"] = "dry-run"
         atomic_write_json(manifest_path, manifest)
         return
 
@@ -280,11 +286,46 @@ def stage_discover(manifest: dict, manifest_path: Path, args, dry_run: bool):
             manifest["channels"]["github"]["status"] = status
             atomic_write_json(manifest_path, manifest)
 
+    def run_xhs():
+        """XHS (Xiaohongshu) local-only search channel.
+
+        xhs_query.py is env-var driven and handles its own serialization internally.
+        One thread is sufficient; xhs_query.py serializes requests to avoid rate limits.
+        """
+        if args.skip_xhs:
+            with lock:
+                channel_results["xhs"] = "skipped"
+                manifest["channels"]["xhs"]["status"] = "skipped"
+                atomic_write_json(manifest_path, manifest)
+            return
+        if not XHS_QUERY.exists():
+            with lock:
+                channel_results["xhs"] = "error"
+                manifest["channels"]["xhs"]["status"] = "error"
+                manifest["channels"]["xhs"]["error"] = "xhs_query.py not found"
+                atomic_write_json(manifest_path, manifest)
+            return
+        xhs_dir = str(output_dir / "xhs")
+        try:
+            result = run_script_capture(
+                XHS_QUERY,
+                [topic, "--output-dir", xhs_dir],
+                timeout=300
+            )
+            status = "done" if result.returncode in (0, 2) else "error"
+        except Exception as e:
+            status = "error"
+        with lock:
+            channel_results["xhs"] = status
+            manifest["channels"]["xhs"]["status"] = status
+            atomic_write_json(manifest_path, manifest)
+
     # Launch parallel channels
     threads = [
         threading.Thread(target=run_perplexity_quick, daemon=True),
         threading.Thread(target=run_bird, daemon=True),
         threading.Thread(target=run_github, daemon=True),
+        threading.Thread(target=run_xhs, daemon=True),
     ]
 
     for t in threads:
@@ -590,9 +631,9 @@ def main():
     sub.required = True
 
     # doctor
-    p_doctor = sub.add_parser("doctor", help="Stage 0: run preflight for 6-channel authorization")
+    p_doctor = sub.add_parser("doctor", help="Stage 0: run preflight for 7-channel authorization")
     p_doctor.add_argument("--essential", default=None,
-                          help="Required channels (comma-separated): comet-9223,perplexity-auth,chrome-9222,notebooklm-auth,bird-auth,webaccess-proxy")
+                          help="Required channels (comma-separated): comet-9223,perplexity-auth,chrome-9222,notebooklm-auth,bird-auth,webaccess-proxy,xhs-scout")
     p_doctor.add_argument("--skip", default=None, help="Channels to skip (comma-separated)")
     p_doctor.add_argument("--strict", action="store_true", help="Exit 1 if any channel fails")
     p_doctor.add_argument("--no-popup", action="store_true", help="No popup (CI mode)")
@@ -612,6 +653,7 @@ def main():
     p_run.add_argument("--skip-nlm", action="store_true", help="Skip NLM channel")
     p_run.add_argument("--skip-deep", action="store_true", help="Skip Perplexity Deep")
     p_run.add_argument("--skip-gh", action="store_true", help="Skip GitHub channel")
+    p_run.add_argument("--skip-xhs", action="store_true", help="Skip XHS channel")
     p_run.add_argument("--resume", default=None,
                        help="Resume from existing manifest.json path")
     p_run.add_argument("--dry-run", action="store_true",

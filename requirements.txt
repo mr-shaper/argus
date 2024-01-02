@@ -1,13 +1,22 @@
-# Argus core dependencies
+# Argus core dependencies (required for any channel to run)
 requests>=2.28.0
 
-# Optional: install sister skills manually per README Prerequisites
-# - NotebookLM channel: pip install notebooklm-py
-# - WebAccess channel:  git clone https://github.com/eze-is/web-access
-# - GitHub channel:     brew install gh && gh auth login
-#
-# Bring-your-own (no public upstream, see README):
-# - perplexity-reader  (Perplexity browser wrapper)
-# - chrome-reader.py   (WebAccess fallback)
-# - bird CLI           (X/Twitter)
-# - Comet.app          (Perplexity browser, proprietary)
+# NotebookLM channel (BUG-02 fix: was hidden in comments)
+notebooklm-py>=0.3.0
+playwright>=1.40.0  # required for `notebooklm login` browser OAuth
+# After install, run: playwright install chromium  (~150MB browser binary)
+
+# Perplexity / WebAccess channels (CDP WebSocket)
+websocket-client>=1.5.0
+
+# === Bring-your-own (no public upstream, see README Prerequisites) ===
+# - perplexity-reader skill   (Perplexity browser wrapper) — see CONTRIBUTING for minimal stub
+# - chrome-reader.py          (WebAccess fallback)
+# - bird CLI                  (X/Twitter, proprietary Node.js binary) — see CONTRIBUTING Bird interface
+# - Comet.app                 (Perplexity browser, proprietary)
+# - xiaohongs MCP service     (XHS local :18060) — see README Onboarding step 8
+
+# === System-level (use brew/apt) ===
+# - gh CLI                    (GitHub channel)
+# - Python 3.10+              (declared in pyproject.toml)
+# - Node.js 22+               (for web-access proxy)

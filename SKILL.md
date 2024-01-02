@@ -7,27 +7,29 @@ description: Use when deep multi-source research is needed (OODC-Observe phase),
 
 ## Three Pillars
 
-- **SKILLS**: Orchestrates sister skills — `perplexity-reader`, `notebooklm`, `bird`, `web-access` — into a single coherent pipeline with shared quota management and anti-ban policies.
-- **DOCTOR**: `probe.py doctor` auto-detects all 6 channels, self-heals auth failures via `osascript`-guided remediation popups, and produces actionable exit codes.
-- **Onboarding**: Per-channel first-time auth walkthrough so every channel reaches green before firing a research run.
+- **SKILLS**: Orchestrates sister skills — `perplexity-reader`, `notebooklm`, `bird`, `web-access`, `xhs` — into a single coherent pipeline across 7 channels with shared quota management and anti-ban policies.
+- **DOCTOR**: `probe.py doctor` Detect & Guide — detects all 7 channels and tells you the exact remediation command to run. On macOS some auto-launch attempts may fail due to LaunchServices behavior (see Onboarding for the safe `open -na` recipe).
+- **Onboarding**: Per-channel first-time auth walkthrough so every channel reaches green before firing a research run. macOS users must use `open -na` not `nohup` (see README).
 
 ---
 
-## DOCTOR — Auto-Detect & Self-Heal
+## DOCTOR — Detect & Guide
 
-`probe.py doctor` is the heart of Argus onboarding. It checks all 6 channels with two modes:
+`probe.py doctor` is the heart of Argus onboarding. It checks all 7 channels with two modes:
+
+Doctor detects channel state and tells you the exact remediation command. On macOS some auto-launch attempts may fail due to LaunchServices behavior (see Onboarding for the safe `open -na` recipe).
 
 **Quick check (essential channels only)**:
 ```bash
 python3 scripts/probe.py doctor --essential comet-9223,perplexity-auth,chrome-9222
 ```
 
-**Full check (all 6 channels with osascript-guided remediation)**:
+**Full check (all 7 channels with guided remediation)**:
 ```bash
 python3 scripts/probe.py doctor
 ```
 
-When a channel fails, Argus pops a macOS dialog (via `osascript`) with the exact remediation command — for example, "Click OK to launch perplexity-login.py". You can disable popups with `--no-popup` for CI/cron use.
+When a channel fails, doctor outputs the exact remediation command to run. You can disable popups with `--no-popup` for CI/cron use.
 
 **Exit codes**:
 - `0` — all channels healthy
@@ -119,19 +121,20 @@ Include: default recommendation + 2 alternatives + quota cost per option + expec
 
 ---
 
-## 7 Ironclad Rules
+## 8 Ironclad Rules
 
 1. **Perplexity must use Comet port 9223** — Chrome 9222 triggers hcaptcha on Perplexity
-2. **Chrome 9222 "connection failed" = `DevToolsActivePort` path mismatch**, not a permissions issue
-3. **NLM Pro hard limit: 300 sources/notebook** — fail-fast above this; Phase 2 DEDUPE must gate `len <= 300`
-4. **AI must not read source body text** — handle URL + title + snippet only; full body goes to NLM for indexing
-5. **NLM input must be fully ready before firing report** — `all status==ready` gate required (Phase 4 WAIT)
-6. **Perplexity and Bird are independent channels** — do not feed their output into NLM; they land in `research-raw/<ch>/`
-7. **Perplexity all-channel `Semaphore(3)`** — Quick and Deep share this cap; concurrent > 3 triggers account ban
+2. **XHS serial single-thread** — `xhs_query.py` uses internal `threading.Lock()` + `--sleep-between 2.0`; never run XHS queries concurrently; no SSH required, connects directly to local `:18060`
+3. **Chrome 9222 "connection failed" = `DevToolsActivePort` path mismatch**, not a permissions issue
+4. **NLM Pro hard limit: 300 sources/notebook** — fail-fast above this; Phase 2 DEDUPE must gate `len <= 300`
+5. **AI must not read source body text** — handle URL + title + snippet only; full body goes to NLM for indexing
+6. **NLM input must be fully ready before firing report** — `all status==ready` gate required (Phase 4 WAIT)
+7. **Perplexity and Bird are independent channels** — do not feed their output into NLM; they land in `research-raw/<ch>/`
+8. **Perplexity all-channel `Semaphore(3)`** — Quick and Deep share this cap; concurrent > 3 triggers account ban
 
 ---
 
-## 6-Channel Matrix
+## 7-Channel Matrix
 
 | Channel | Script | Concurrency | Latency | Responsibility |
 |---------|--------|-------------|---------|----------------|
@@ -141,6 +144,7 @@ Include: default recommendation + 2 alternatives + quota cost per option + expec
 | Bird | `bird_batch.py` | 5 parallel | 5-10s | X/Twitter posts only; Bird does not collect YouTube |
 | WebAccess | `webaccess_crawl.py` | multi-targetId parallel | 2-15s/page | Web crawl; YouTube URL discovery → hand off to NLM |
 | GitHub | `github_fetch.py {repo,trending,issues,release,search-repos}` | Sem(10) repo / Sem(3) search | 0.5-3s | AI repos README + issues + release + trending; `--to-nlm` cap 30 |
+| XHS | `scripts/xhs_query.py` | Serial + 2s sleep per query (threading.Lock) | 5-20s | xiaohongshu MCP (BYO private instance); local :18060 directly, no SSH |
 
 > **YouTube path:** `webaccess_crawl.py` discovers YouTube URLs → passes them to `nlm_pipeline.py inject` for NLM source-add. Bird does **not** handle YouTube.
 
