@@ -138,11 +138,11 @@ Include: default recommendation + 2 alternatives + quota cost per option + expec
 
 | Channel | Script | Concurrency | Latency | Responsibility |
 |---------|--------|-------------|---------|----------------|
-| Perplexity Quick | `perplexity_quick.py` | Shared Sem(3) | 30-60s | AI synthesis summaries → `research-raw/perplexity_quick/` |
-| Perplexity Deep | `perplexity_deep.py` | Shared Sem(3), 100/day quota | 5-10 min | Deep AI reports → `research-raw/perplexity_deep/` |
+| Perplexity Quick | `perplexity_quick.py` | Shared Sem(3) | 30-60s | AI synthesis summaries → `research-raw/perplexity_quick/` · Sister: bundled `sister-skills/perplexity-reader/` |
+| Perplexity Deep | `perplexity_deep.py` | Shared Sem(3), 100/day quota | 5-10 min | Deep AI reports → `research-raw/perplexity_deep/` · Sister: bundled `sister-skills/perplexity-reader/` |
 | NotebookLM | `nlm_pipeline.py {discover,inject,wait,generate}` | Source-add serial 1.5s / report parallel ×3 | 15-45 min | Web/PDF/YouTube URL indexing → structured report |
 | Bird | `bird_batch.py` | 5 parallel | 5-10s | X/Twitter posts only; Bird does not collect YouTube |
-| WebAccess | `webaccess_crawl.py` | multi-targetId parallel | 2-15s/page | Web crawl; YouTube URL discovery → hand off to NLM |
+| WebAccess | `webaccess_crawl.py` | multi-targetId parallel | 2-15s/page | Web crawl; YouTube URL discovery → hand off to NLM · Sister: bundled `sister-skills/chrome-reader/` |
 | GitHub | `github_fetch.py {repo,trending,issues,release,search-repos}` | Sem(10) repo / Sem(3) search | 0.5-3s | AI repos README + issues + release + trending; `--to-nlm` cap 30 |
 | XHS | `scripts/xhs_query.py` | Serial + 2s sleep per query (threading.Lock) | 5-20s | xiaohongshu MCP (BYO private instance); local :18060 directly, no SSH |
 
@@ -232,9 +232,10 @@ Argus is a multi-source research orchestrator. Before spawning any parallel sub-
 
 ## Related Sister Skills
 
-- `perplexity-reader` — Perplexity base CLI (Argus wraps the 3-round strategy around it)
+- `perplexity-reader` — **bundled** in `sister-skills/perplexity-reader/`; Argus wraps the 3-round strategy around it
+- `chrome-reader` — **bundled** in `sister-skills/chrome-reader/`; used by WebAccess channel for single-URL reads
 - `notebooklm` — NLM official CLI (Argus implements the 7-phase workflow on top)
-- `bird` — X/Twitter CLI (upstream; Argus calls `bird_batch.py` which wraps it)
+- `bird` — X/Twitter CLI (BYO upstream; Argus calls `bird_batch.py` which wraps it)
 - `web-access` — Chrome CDP Proxy on port 3456; required for WebAccess channel
 
 See `README.md` for the full first-time setup walkthrough and `CONTRIBUTING.md` for development guidelines.

@@ -32,7 +32,10 @@ _GLOBAL_SEM = threading.Semaphore(3)
 
 COMET_PORT = int(os.environ.get("COMET_PORT", "9223"))
 
-PERPLEXITY_READER = Path.home() / ".claude/skills/shelf/perplexity-reader/scripts/perplexity-reader.py"
+PERPLEXITY_READER = (
+    Path(__file__).parent.parent
+    / "sister-skills" / "perplexity-reader" / "scripts" / "perplexity-reader.py"
+)
 
 
 def slugify(text: str, maxlen: int = 50) -> str:

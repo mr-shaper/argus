@@ -124,11 +124,11 @@ def crawl_url_via_cdp_proxy(url: str, output_dir: Path, scroll: bool, close_tabs
     out_file = output_dir / f"{slug}.md"
 
     try:
-        # Use chrome-reader.py to read page via CDP
-        chrome_reader = Path.home() / ".claude/scripts/chrome-reader.py"
-        if not chrome_reader.exists():
-            # Try alternate path
-            chrome_reader = Path.home() / ".claude/skills/shelf/web-access/scripts/chrome-reader.py"
+        # Use chrome-reader.py to read page via CDP (bundled in sister-skills/)
+        chrome_reader = (
+            Path(__file__).parent.parent
+            / "sister-skills" / "chrome-reader" / "scripts" / "chrome-reader.py"
+        )
 
         if chrome_reader.exists():
             result = subprocess.run(

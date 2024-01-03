@@ -33,7 +33,10 @@ from datetime import datetime
 COMET_PORT = int(os.environ.get("COMET_PORT", "9223"))
 COMET = f"http://localhost:{COMET_PORT}"
 
-PERPLEXITY_READER = Path.home() / ".claude/skills/shelf/perplexity-reader/scripts/perplexity-reader.py"
+PERPLEXITY_READER = (
+    Path(__file__).parent.parent
+    / "sister-skills" / "perplexity-reader" / "scripts" / "perplexity-reader.py"
+)
 
 
 def comet_alive():

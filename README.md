@@ -17,7 +17,7 @@ Argus combines three orthogonal capabilities into one CLI:
 
 ### 1. SKILLS — Sister-Skill Orchestration
 
-Argus does not implement search or scrape itself. It coordinates **6 independent channels** — Perplexity, NotebookLM, X/Twitter via Bird, web crawl via web-access, Chrome reader, and GitHub — into one OODC-Observe pipeline. Each channel is a separate "sister skill" that you supply (`perplexity-reader`, `notebooklm-py`, `bird`, `web-access`, ...). Argus manages rate limits, quotas, and failure isolation; channels do not know about each other.
+Argus does not implement search or scrape itself. It coordinates **7 independent channels** — Perplexity, NotebookLM, X/Twitter via Bird, web crawl via web-access, Chrome reader, GitHub, and XHS — into one OODC-Observe pipeline. `perplexity-reader` and `chrome-reader` are **bundled in `sister-skills/`** (no separate install); other channels (`notebooklm-py`, `bird`, `web-access`) are bring-your-own. Argus manages rate limits, quotas, and failure isolation; channels do not know about each other.
 
 ### 2. DOCTOR — Detect & Guide
 
@@ -99,10 +99,10 @@ You should see a JSON response with browser version info. Keep Comet running dur
 
 ### 2. Perplexity login cookie
 
-Install the `perplexity-reader` sister skill (bring your own implementation, or adapt a community fork — see [CONTRIBUTING.md](./CONTRIBUTING.md)). Then run the login helper:
+The `perplexity-reader` and `chrome-reader` sister skills are **bundled** in `sister-skills/` — no separate install needed. Then run the login helper:
 
 ```bash
-python3 /path/to/perplexity-reader/scripts/perplexity-login.py login
+python3 sister-skills/perplexity-reader/scripts/perplexity-login.py login
 # Cookie is persisted to $PERPLEXITY_COOKIES_PATH
 # Default: ~/.config/argus/cookies/perplexity.json
 ```
@@ -213,11 +213,11 @@ All channels should show green. Any remaining failures will include a remediatio
 
 | Channel | Purpose | Sister Skill | First-Time Auth |
 |---------|---------|--------------|-----------------|
-| `perplexity_quick` | AI synthesis (< 5 min) | perplexity-reader [BYO] + Comet :9223 | Step 1 + 2 |
+| `perplexity_quick` | AI synthesis (< 5 min) | bundled `sister-skills/perplexity-reader/` + Comet :9223 | Step 1 + 2 |
 | `perplexity_deep` | Deep AI report (5-10 min) | same | Step 1 + 2 |
 | `nlm` | Structured report (15-45 min, 300-source cap) | notebooklm-py | Step 5 |
 | `bird` | X/Twitter posts | bird CLI [BYO — no reference impl] | Step 6 |
-| `webaccess` | Web crawl + YouTube discovery | web-access skill + Chrome CDP | Step 3 + 4 |
+| `webaccess` | Web crawl + YouTube discovery | bundled `sister-skills/chrome-reader/` + web-access skill + Chrome CDP | Step 3 + 4 |
 | `github` | repos / trending / issues | gh CLI | Step 7 |
 | `xhs` | Xiaohongshu posts | xiaohongshu MCP [BYO, local :18060] | Step 8 |
 
@@ -363,9 +363,9 @@ These rules are enforced in code. Forks and extensions must not violate them.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for dev setup, code style, PR process, and how to contribute open implementations of the bring-your-own channels (`perplexity-reader`, `chrome-reader.py`, `bird`).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for dev setup, code style, PR process, and how to contribute open implementations of the bring-your-own channels (`bird`). `perplexity-reader` and `chrome-reader` are already bundled in `sister-skills/`.
 
-Community implementations of bring-your-own channels are especially welcome. If you have built a working open-source `perplexity-reader` equivalent, please open a PR to add it to the references list in CONTRIBUTING.md.
+Community implementations of bring-your-own channels are welcome. If you have built a working open-source `bird` equivalent, please open a PR to add it to the references list in CONTRIBUTING.md.
 
 ---
 

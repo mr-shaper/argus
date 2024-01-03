@@ -203,11 +203,11 @@ python3 scripts/probe.py doctor
 
 | 通道 | 用途 | 姐妹依赖 | 首次授权 |
 |------|------|---------|---------|
-| `perplexity_quick` | 快速 AI 综合摘要（< 5 分钟） | `perplexity-reader`（自备）+ Comet :9223 | 步骤 1 + 2 |
+| `perplexity_quick` | 快速 AI 综合摘要（< 5 分钟） | 已捆绑 `sister-skills/perplexity-reader/` + Comet :9223 | 步骤 1 + 2 |
 | `perplexity_deep` | 深度 AI 长报告（5-10 分钟） | 同上 | 步骤 1 + 2 |
 | `nlm` | 多维结构化报告（15-45 分钟，上限 300 来源） | `notebooklm-py` | 步骤 5 |
-| `bird` | X/Twitter 帖子搜索 | `bird` CLI（自带 — 无参考实现） | 步骤 6 |
-| `webaccess` | 网页爬取 + YouTube URL 发现 | `web-access` skill + Chrome CDP | 步骤 3 + 4 |
+| `bird` | X/Twitter 帖子搜索 | `bird` CLI（自备 — 无参考实现） | 步骤 6 |
+| `webaccess` | 网页爬取 + YouTube URL 发现 | 已捆绑 `sister-skills/chrome-reader/` + `web-access` skill + Chrome CDP | 步骤 3 + 4 |
 | `github` | 仓库 / Trending / Issues | `gh` CLI | 步骤 7 |
 | `xhs` | 小红书帖子搜索 | 小红书 MCP（自带，本机 :18060） | 步骤 8 |
 
@@ -231,14 +231,21 @@ brew install gh
 gh auth login
 ```
 
+### 已捆绑（无需单独安装）
+
+`perplexity-reader` 和 `chrome-reader` 已捆绑在 `sister-skills/` 子目录中，无需单独安装：
+
+| 依赖 | 通道 | 说明 |
+|------|------|------|
+| `perplexity-reader` | Perplexity Quick + Deep | 已捆绑于 `sister-skills/perplexity-reader/`，无需单独安装。 |
+| `chrome-reader.py` | WebAccess 回退 | 已捆绑于 `sister-skills/chrome-reader/`，无需单独安装。 |
+
 ### 需自备（Bring Your Own）
 
 以下依赖由 Argus 调用，但无公开上游。你需要自行提供实现或替代方案：
 
 | 依赖 | 通道 | 说明 |
 |------|------|------|
-| `perplexity-reader` | Perplexity Quick + Deep | Perplexity 浏览器自动化封装，无公开上游。欢迎社区 fork / 替代实现，详见 [贡献指南](./CONTRIBUTING.md)。 |
-| `chrome-reader.py` | WebAccess 回退 | 通过 Chrome DevTools Protocol（CDP）读取单个 URL，无公开发布版本。 |
 | `bird` CLI | X/Twitter | 封装 X API 或第三方客户端，无确认的公开上游。 |
 | `Comet.app` | Perplexity | Perplexity 专属浏览器，用于在 `:9223` 端口规避 hcaptcha。 |
 
